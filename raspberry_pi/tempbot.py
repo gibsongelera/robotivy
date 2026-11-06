@@ -651,20 +651,39 @@ class LCDDisplay:
         if smbus2:
             try:
                 found = []
+                timed_out = False
                 with smbus2.SMBus(self._bus_number) as bus:
                     for addr in range(0x03, 0x78):
                         try:
                             bus.read_byte(addr)
                             found.append(hex(addr))
                         except TimeoutError:
-                            logging.error("[LCD-DIAG] Bus TIMED OUT at address %s! SCL (Pin 5) or SDA (Pin 3) is likely shorted to Ground or lacks 5V.", hex(addr))
+                            timed_out = True
+                            logging.error("[LCD-DIAG] Bus TIMED OUT at address %s! SCL (Pin 5) or SDA (Pin 3) is being held at 0 Volts.", hex(addr))
                             break
                         except OSError:
                             pass
                 if found:
                     logging.info("[LCD-DIAG] I2C devices successfully detected on bus %d: %s", self._bus_number, found)
-                else:
+                elif not timed_out:
                     logging.warning("[LCD-DIAG] No I2C devices answered on bus %d. Check: VCC to Pin 2 (5V), GND to Pin 6, SDA to Pin 3, SCL to Pin 5.", self._bus_number)
+
+                # If timed out, check electrical logic level of Pin 3 and Pin 5
+                if timed_out and GPIO:
+                    try:
+                        GPIO.setup(2, GPIO.IN)
+                        GPIO.setup(3, GPIO.IN)
+                        sda_val = GPIO.input(2)
+                        scl_val = GPIO.input(3)
+                        logging.info("[LCD-DIAG] Line electrical check: SDA (Pin 3) = %s | SCL (Pin 5) = %s",
+                                     "3.3V HIGH (Normal)" if sda_val else "0V LOW (SHORTED TO GROUND!)",
+                                     "3.3V HIGH (Normal)" if scl_val else "0V LOW (SHORTED TO GROUND!)")
+                        if not scl_val:
+                            logging.error("[LCD-DIAG] SCL (Pin 5) is grounded! Either SCL wire is plugged into Ground (Pin 6) or SDA and SCL wires are swapped.")
+                        if not sda_val:
+                            logging.error("[LCD-DIAG] SDA (Pin 3) is grounded! Check if SDA wire is plugged into Ground (Pin 6) or if sensor VCC is missing.")
+                    except Exception:
+                        pass
             except Exception as exc:
                 logging.warning("[LCD-DIAG] I2C scan warning: %s", exc)
 
