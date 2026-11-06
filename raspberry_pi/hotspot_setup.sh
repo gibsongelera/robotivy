@@ -86,10 +86,10 @@ create_backup() {
 # ---------------------------------------------------------------------------
 
 install_packages() {
-    info "--- Installing hostapd and dnsmasq ---"
+    info "--- Installing hostapd, dnsmasq, and iptables ---"
 
     apt-get update -qq
-    apt-get install -y -qq hostapd dnsmasq
+    apt-get install -y -qq hostapd dnsmasq iptables
 
     # Stop services while we configure them
     systemctl stop hostapd 2>/dev/null || true
@@ -236,6 +236,15 @@ enable_ip_forwarding() {
 
 configure_iptables() {
     info "--- Configuring iptables ---"
+
+    if ! command -v iptables &>/dev/null; then
+        apt-get install -y -qq iptables 2>/dev/null || true
+    fi
+
+    if ! command -v iptables &>/dev/null; then
+        warn "iptables not available – skipping NAT configuration (hotspot will still work locally)."
+        return
+    fi
 
     # Flush existing NAT rules
     iptables -t nat -F 2>/dev/null || true
