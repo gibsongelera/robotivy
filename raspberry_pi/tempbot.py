@@ -618,61 +618,104 @@ class TemperatureSensor:
 class LCDDisplay:
     """I2C 16×2 character LCD driver (HD44780 compatible via PCF8574).
 
-    Args:
-        address: I2C address (e.g. 0x27).
-        bus_number: I2C bus number.
-        cols: Number of columns.
-        rows: Number of rows.
-        backlight: Enable backlight on init.
+    Features:
+        - Auto-detection of address (0x27, 0x3F, or user specified)
+        - Hardware I2C bus diagnostic scanning at startup
+        - Dynamic auto-reconnect (self-healing if wires are adjusted while running)
+        - Informative logging of all display updates
     """
 
     def __init__(self, address: int = 0x27, bus_number: int = 1,
                  cols: int = 16, rows: int = 2, backlight: bool = True):
-        self._lcd = None
+        self._address = address
+        self._bus_number = bus_number
         self._cols = cols
         self._rows = rows
+        self._backlight = backlight
+        self._lcd = None
         self._lock = threading.Lock()
+        self._last_reconnect_attempt = 0.0
+        self._last_logged_text = ""
 
-        if CharLCD:
-            addresses_to_try = [address]
-            alt = 0x3F if address == 0x27 else 0x27
-            if alt not in addresses_to_try:
-                addresses_to_try.append(alt)
+        # Run hardware diagnostic scan first
+        self._diagnose_bus()
+        self._try_init()
 
-            for addr in addresses_to_try:
-                try:
-                    self._lcd = CharLCD(
-                        i2c_expander="PCF8574",
-                        address=addr,
-                        port=bus_number,
-                        cols=cols,
-                        rows=rows,
-                        backlight_enabled=backlight,
-                    )
-                    logging.info("LCD initialized at address 0x%02X.", addr)
-                    break
-                except Exception as exc:
-                    logging.debug("LCD init failed at 0x%02X: %s", addr, exc)
+    def _diagnose_bus(self) -> None:
+        """Scan I2C bus and log diagnostics to help pinpoint wiring issues."""
+        dev_path = f"/dev/i2c-{self._bus_number}"
+        if not os.path.exists(dev_path):
+            logging.error("[LCD-DIAG] Linux I2C device %s does NOT exist! Enable via: sudo raspi-config nonint do_i2c 0", dev_path)
+            return
 
-            if self._lcd is None:
-                logging.error("LCD initialization failed: Could not communicate at addresses %s",
-                              [hex(a) for a in addresses_to_try])
-        else:
+        if smbus2:
+            try:
+                found = []
+                with smbus2.SMBus(self._bus_number) as bus:
+                    for addr in range(0x03, 0x78):
+                        try:
+                            bus.read_byte(addr)
+                            found.append(hex(addr))
+                        except TimeoutError:
+                            logging.error("[LCD-DIAG] Bus TIMED OUT at address %s! SCL (Pin 5) or SDA (Pin 3) is likely shorted to Ground or lacks 5V.", hex(addr))
+                            break
+                        except OSError:
+                            pass
+                if found:
+                    logging.info("[LCD-DIAG] I2C devices successfully detected on bus %d: %s", self._bus_number, found)
+                else:
+                    logging.warning("[LCD-DIAG] No I2C devices answered on bus %d. Check: VCC to Pin 2 (5V), GND to Pin 6, SDA to Pin 3, SCL to Pin 5.", self._bus_number)
+            except Exception as exc:
+                logging.warning("[LCD-DIAG] I2C scan warning: %s", exc)
+
+    def _try_init(self) -> bool:
+        """Attempt to initialize the LCD."""
+        if not CharLCD:
             logging.warning("RPLCD library not available – LCD in simulation mode.")
+            return False
+
+        addresses_to_try = [self._address]
+        alt = 0x3F if self._address == 0x27 else 0x27
+        if alt not in addresses_to_try:
+            addresses_to_try.append(alt)
+
+        for addr in addresses_to_try:
+            try:
+                self._lcd = CharLCD(
+                    i2c_expander="PCF8574",
+                    address=addr,
+                    port=self._bus_number,
+                    cols=self._cols,
+                    rows=self._rows,
+                    backlight_enabled=self._backlight,
+                )
+                logging.info("[LCD-DIAG] SUCCESS: LCD initialized and active at address 0x%02X!", addr)
+                return True
+            except Exception as exc:
+                logging.debug("[LCD-DIAG] Init failed at address 0x%02X: %s", addr, exc)
+
+        logging.error("[LCD-DIAG] LCD initialization failed at addresses %s. Waiting for hardware connection...",
+                      [hex(a) for a in addresses_to_try])
+        self._lcd = None
+        return False
 
     def write(self, line1: str, line2: str = "") -> None:
         """Write up to two lines to the display.
 
         Lines are truncated / padded to fit the display width.
-
-        Args:
-            line1: First line text.
-            line2: Second line text.
         """
         l1 = line1[:self._cols].ljust(self._cols)
         l2 = line2[:self._cols].ljust(self._cols)
 
         with self._lock:
+            # Dynamic self-healing: if LCD was disconnected on boot, retry every 3 seconds
+            if self._lcd is None:
+                now = time.time()
+                if now - self._last_reconnect_attempt > 3.0:
+                    self._last_reconnect_attempt = now
+                    if self._try_init():
+                        logging.info("[LCD-DIAG] LCD dynamically connected! Displaying live text.")
+
             if self._lcd:
                 try:
                     self._lcd.cursor_pos = (0, 0)
@@ -680,9 +723,13 @@ class LCDDisplay:
                     self._lcd.cursor_pos = (1, 0)
                     self._lcd.write_string(l2)
                 except Exception as exc:
-                    logging.error("LCD write error: %s", exc)
+                    logging.error("[LCD-DIAG] LCD write error: %s (will retry)", exc)
+                    self._lcd = None
             else:
-                logging.debug("LCD >>> %s | %s", l1.strip(), l2.strip())
+                current_text = f"{l1.strip()} | {l2.strip()}"
+                if current_text != self._last_logged_text:
+                    logging.info("[LCD-OUTPUT] %s", current_text)
+                    self._last_logged_text = current_text
 
     def clear(self) -> None:
         """Clear the display."""

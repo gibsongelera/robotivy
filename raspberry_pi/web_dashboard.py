@@ -611,14 +611,15 @@ def handle_servo_command(data):
 # ---------------------------------------------------------------------------
 
 _previous_state_hash = None
+_last_processed_log_count = 0
 
 
 def _broadcast_loop():
     """
     Periodically read state files and broadcast updates to all connected
-    WebSocket clients.  Runs every BROADCAST_INTERVAL_MS milliseconds.
+    WebSocket clients. Runs every BROADCAST_INTERVAL_MS milliseconds.
     """
-    global _previous_state_hash
+    global _previous_state_hash, _last_processed_log_count
 
     while True:
         try:
@@ -630,7 +631,7 @@ def _broadcast_loop():
             system = _get_system_health()
 
             # Read latest event-log lines for serial feed
-            log_lines = _read_log_tail(EVENTS_LOG, 20)  # last 20 for incremental
+            log_lines = _read_log_tail(EVENTS_LOG, 50)
 
             if isinstance(history, dict):
                 history = history.get("readings", [])
@@ -645,10 +646,16 @@ def _broadcast_loop():
 
             socketio.emit("update", payload)
 
-            # Feed new log lines into serial buffer
-            for line in log_lines[-5:]:  # only very recent to avoid duplicates
-                if line:
-                    serial_add(line, "DATA")
+            # Only append truly new lines to serial buffer
+            if len(log_lines) > _last_processed_log_count:
+                new_lines = log_lines[_last_processed_log_count:]
+                for line in new_lines:
+                    if line:
+                        serial_add(line, "DATA")
+                _last_processed_log_count = len(log_lines)
+            elif len(log_lines) < _last_processed_log_count:
+                # Log was rotated or reset
+                _last_processed_log_count = len(log_lines)
 
         except Exception as exc:
             logger.error("Broadcast error: %s", exc)
@@ -729,15 +736,6 @@ def start_dashboard(host: str = "0.0.0.0", port: int = 5000, debug: bool = False
 
     # Ensure tmpfs directory exists
     os.makedirs(TMPFS_DIR, exist_ok=True)
-
-    # Install stdout/stderr capture
-    sys.stdout = _SerialCapture(sys.stdout, "INFO")
-    sys.stderr = _SerialCapture(sys.stderr, "ERROR")
-
-    serial_add(f"Starting dashboard on {host}:{port}", "SYSTEM")
-    serial_add(f"State file: {STATE_FILE}", "SYSTEM")
-    serial_add(f"History file: {HISTORY_FILE}", "SYSTEM")
-    serial_add(f"Events log: {EVENTS_LOG}", "SYSTEM")
 
     # Start background broadcast thread
     socketio.start_background_task(_broadcast_loop)
