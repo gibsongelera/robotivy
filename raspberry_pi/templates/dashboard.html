@@ -770,10 +770,14 @@
                 connLabel.textContent = 'Disconnected';
                 addSerialLine({ timestamp: ts(), level: 'ERROR', message: 'WebSocket disconnected' });
             });
+            let socketErrors = 0;
             socket.on('connect_error', () => {
-                connected = false;
-                connDot.classList.remove('connected');
-                connLabel.textContent = 'Retrying…';
+                socketErrors++;
+                if (socketErrors >= 2) {
+                    // Protocol mismatch or WS failure: gracefully disable WS and switch 100% to HTTP polling
+                    try { socket.disconnect(); } catch (e) {}
+                    socket = null;
+                }
             });
             socket.on('update', (payload) => {
                 lastWsUpdate = Date.now();
@@ -805,7 +809,7 @@
             if (data && data.ok) {
                 connected = true;
                 connDot.classList.add('connected');
-                connLabel.textContent = (socket && socket.connected) ? 'Connected (WS)' : 'Connected (HTTP)';
+                connLabel.textContent = (socket && socket.connected) ? 'Connected (WS)' : 'Connected';
                 applyUpdate(data);
             }
         } catch (err) {
@@ -819,6 +823,7 @@
         }
     }
     setInterval(pollStatus, 1000);
+    pollStatus();
 
     // Fallback serial poll (every 2.5s if WebSocket not active)
     let isSerialPolling = false;
