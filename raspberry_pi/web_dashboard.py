@@ -695,6 +695,22 @@ class _SerialCapture:
 # ---------------------------------------------------------------------------
 
 
+def _free_port(port: int = 5000):
+    """Release port if held by a stale background process on Linux."""
+    if os.name != "nt":
+        try:
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                in_use = (s.connect_ex(("127.0.0.1", port)) == 0)
+            if in_use:
+                logger.warning("Port %d is occupied. Terminating stale process...", port)
+                subprocess.run(["fuser", "-k", f"{port}/tcp"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(1.0)
+        except Exception as e:
+            logger.debug("Port check note: %s", e)
+
+
 def start_dashboard(host: str = "0.0.0.0", port: int = 5000, debug: bool = False):
     """
     Start the TempBot web dashboard server.
@@ -708,6 +724,9 @@ def start_dashboard(host: str = "0.0.0.0", port: int = 5000, debug: bool = False
     debug : bool
         Enable Flask debug mode.
     """
+    # Free port if a zombie process is still running
+    _free_port(port)
+
     # Ensure tmpfs directory exists
     os.makedirs(TMPFS_DIR, exist_ok=True)
 
