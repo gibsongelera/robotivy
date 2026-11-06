@@ -23,7 +23,7 @@
     "safety": {
         "use_tmpfs": true,
         "tmpfs_path": "/tmp/tempbot",
-        "persistent_path": "/home/pi/tempbot_data",
+        "persistent_path": "/home/robotivy/tempbot_data",
         "sync_interval": 300,
         "max_log_size_mb": 10,
         "max_log_files": 5,

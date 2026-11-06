@@ -108,7 +108,7 @@ def load_config(config_path: Optional[str] = None) -> dict:
         },
         "safety": {
             "use_tmpfs": True, "tmpfs_path": "/tmp/tempbot",
-            "persistent_path": "/home/pi/tempbot_data",
+            "persistent_path": os.path.expanduser("~/tempbot_data"),
             "sync_interval": 300, "max_log_size_mb": 10, "max_log_files": 5,
             "watchdog_interval": 30, "max_events_in_memory": 1000,
         },
@@ -930,7 +930,7 @@ class TempBot:
             self._persist_dir = os.environ.get("TEMPBOT_PERSIST", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
         else:
             self._tmpfs_dir = os.environ.get("TEMPBOT_TMPFS", safety.get("tmpfs_path", "/tmp/tempbot"))
-            self._persist_dir = os.environ.get("TEMPBOT_PERSIST", safety.get("persistent_path", "/home/pi/tempbot_data"))
+            self._persist_dir = os.environ.get("TEMPBOT_PERSIST", safety.get("persistent_path", os.path.expanduser("~/tempbot_data")))
 
         self._tmpfs_state_file = os.path.join(self._tmpfs_dir, "state.json")
         self._tmpfs_history_file = os.path.join(self._tmpfs_dir, "history.json")

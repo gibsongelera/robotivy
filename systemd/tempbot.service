@@ -6,11 +6,11 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/robotivy/raspberry_pi
+User=robotivy
+Group=robotivy
+WorkingDirectory=/home/robotivy/robotivy/raspberry_pi
 ExecStartPre=/bin/mkdir -p /tmp/tempbot
-ExecStart=/usr/bin/python3 /home/pi/robotivy/raspberry_pi/tempbot.py
+ExecStart=/usr/bin/python3 /home/robotivy/robotivy/raspberry_pi/tempbot.py
 Restart=always
 RestartSec=5s
 KillSignal=SIGTERM
@@ -23,7 +23,7 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Security & Sandboxing to Protect the Root Filesystem
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/tmp/tempbot /home/pi/tempbot_data /dev/i2c-1 /dev/gpiomem /dev/mem
+ReadWritePaths=/tmp/tempbot /home/robotivy/tempbot_data /dev/i2c-1 /dev/gpiomem /dev/mem
 PrivateTmp=false
 ProtectKernelTunables=true
 ProtectControlGroups=true

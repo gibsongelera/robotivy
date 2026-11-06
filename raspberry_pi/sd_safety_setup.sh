@@ -27,7 +27,9 @@ set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 LOG_FILE="/tmp/sd_safety_setup.log"
-BACKUP_DIR="/home/pi/.sd_safety_backup"
+REAL_USER="${SUDO_USER:-$(whoami)}"
+USER_HOME=$(eval echo "~$REAL_USER")
+BACKUP_DIR="${USER_HOME}/.sd_safety_backup"
 FSTAB="/etc/fstab"
 FSTAB_BACKUP="${BACKUP_DIR}/fstab.bak"
 SYSCTL_CONF="/etc/sysctl.d/99-sd-safety.conf"
@@ -334,8 +336,8 @@ setup_tempbot_dirs() {
     info "--- Creating TempBot directory structure ---"
 
     # Persistent data directory (on SD card – written rarely)
-    mkdir -p /home/pi/tempbot_data/events
-    chown -R pi:pi /home/pi/tempbot_data
+    mkdir -p "${USER_HOME}/tempbot_data/events"
+    chown -R "${REAL_USER}:${REAL_USER}" "${USER_HOME}/tempbot_data"
 
     # tmpfs directory is created at runtime by the TempBot service
     info "TempBot directories created."

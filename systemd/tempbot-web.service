@@ -6,10 +6,10 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/robotivy/raspberry_pi
-ExecStart=/usr/bin/python3 /home/pi/robotivy/raspberry_pi/web_dashboard.py
+User=robotivy
+Group=robotivy
+WorkingDirectory=/home/robotivy/robotivy/raspberry_pi
+ExecStart=/usr/bin/python3 /home/robotivy/robotivy/raspberry_pi/web_dashboard.py
 Restart=always
 RestartSec=5s
 KillSignal=SIGTERM

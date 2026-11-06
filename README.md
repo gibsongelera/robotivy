@@ -86,8 +86,8 @@ sudo reboot
 ### Step 3: Clone the Project
 
 ```bash
-cd /home/pi
-git clone https://github.com/your-username/robotivy.git
+cd ~
+git clone https://github.com/gibsongelera/robotivy.git
 cd robotivy
 ```
 

@@ -34,7 +34,9 @@ NETMASK="255.255.255.0"
 DHCP_RANGE_START="192.168.4.2"
 DHCP_RANGE_END="192.168.4.20"
 DHCP_LEASE="24h"
-BACKUP_DIR="/home/pi/.hotspot_backup"
+REAL_USER="${SUDO_USER:-$(whoami)}"
+USER_HOME=$(eval echo "~$REAL_USER")
+BACKUP_DIR="${USER_HOME}/.hotspot_backup"
 
 # Colours
 RED='\033[0;31m'
