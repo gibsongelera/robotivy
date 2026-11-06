@@ -751,6 +751,7 @@ class ServoMotor:
                     self._pwm.stop()
                 except Exception:
                     pass
+                self._pwm = None
 
 
 class LEDController:

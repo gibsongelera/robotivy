@@ -29,7 +29,11 @@ from pathlib import Path
 
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
-from flask_cors import CORS
+
+try:
+    from flask_cors import CORS
+except ImportError:
+    CORS = None
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -73,7 +77,15 @@ app = Flask(
 )
 app.config["SECRET_KEY"] = "tempbot-dashboard-secret-key"
 
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+if CORS:
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+else:
+    @app.after_request
+    def add_cors_headers(response):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+        response.headers["Access-Control-Allow-Methods"] = "GET,PUT,POST,DELETE,OPTIONS"
+        return response
 
 socketio = SocketIO(
     app,
