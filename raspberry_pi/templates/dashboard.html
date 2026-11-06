@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TempBot Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        /* ================================================================
+           RESET & BASE
+           ================================================================ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-primary:   #1a1a2e;
+            --bg-card:      #16213e;
+            --bg-accent:    #0f3460;
+            --highlight:    #e94560;
+            --success:      #00b894;
+            --info-cyan:    #00cec9;
+            --warn-yellow:  #fdcb6e;
+            --text-primary: #e8e8e8;
+            --text-muted:   #a0a0b8;
+            --border-color: rgba(255,255,255,0.06);
+            --shadow:       0 4px 24px rgba(0,0,0,0.35);
+            --radius:       14px;
+            --transition:   0.3s cubic-bezier(.4,0,.2,1);
+        }
+
+        html { font-size: 15px; }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ================================================================
+           HEADER
+           ================================================================ */
+        header {
+            position: sticky; top: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-accent) 100%);
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 2px 16px rgba(0,0,0,0.4);
+        }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .header-logo { font-size: 1.8rem; line-height: 1; }
+        .header-title { font-weight: 600; font-size: 1.2rem; letter-spacing: .5px; }
+        .header-subtitle { font-size: 0.7rem; color: var(--text-muted); font-weight: 300; }
+        .header-right { display: flex; align-items: center; gap: 18px; font-size: 0.85rem; }
+        .conn-indicator {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 0.78rem; color: var(--text-muted);
+        }
+        .conn-dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            background: #636e72;
+            transition: background var(--transition);
+        }
+        .conn-dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        #clock { font-family: 'Roboto Mono', monospace; font-size: 0.82rem; color: var(--info-cyan); }
+
+        /* ================================================================
+           GRID LAYOUT
+           ================================================================ */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 18px;
+            padding: 20px 24px 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            padding: 20px;
+            transition: transform var(--transition), box-shadow var(--transition);
+            overflow: hidden;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        .card-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px;
+            font-size: 0.82rem; font-weight: 500; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .card-header .icon { font-size: 1.1rem; }
+
+        /* Spanning */
+        .card--temp      { grid-column: span 1; }
+        .card--stats     { grid-column: span 1; }
+        .card--distance  { grid-column: span 1; }
+        .card--servo     { grid-column: span 1; }
+        .card--chart     { grid-column: span 2; }
+        .card--system    { grid-column: span 2; }
+        .card--alerts    { grid-column: span 2; min-height: 280px; }
+        .card--serial    { grid-column: span 2; min-height: 340px; }
+
+        /* ================================================================
+           LIVE TEMPERATURE CARD
+           ================================================================ */
+        .temp-display {
+            text-align: center;
+            padding: 10px 0 6px;
+        }
+        .temp-value {
+            font-size: 3.6rem;
+            font-weight: 700;
+            line-height: 1;
+            transition: color var(--transition);
+        }
+        .temp-unit { font-size: 1.4rem; font-weight: 300; opacity: 0.7; }
+        .temp-label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+        .temp-status {
+            display: inline-flex; align-items: center; gap: 6px;
+            margin-top: 12px; padding: 5px 14px;
+            border-radius: 20px; font-size: 0.75rem; font-weight: 500;
+        }
+        .temp-status.normal  { background: rgba(0,184,148,0.15); color: var(--success); }
+        .temp-status.warning { background: rgba(253,203,110,0.15); color: var(--warn-yellow); }
+        .temp-status.fever   { background: rgba(233,69,96,0.15);  color: var(--highlight); }
+
+        /* Pulse animation for fever */
+        @keyframes fever-pulse {
+            0%, 100% { text-shadow: 0 0 8px rgba(233,69,96,0.3); }
+            50%      { text-shadow: 0 0 24px rgba(233,69,96,0.7), 0 0 48px rgba(233,69,96,0.3); }
+        }
+        .temp-value.fever { animation: fever-pulse 1.2s ease-in-out infinite; }
+
+        .person-badge {
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            margin-top: 10px; font-size: 0.78rem; color: var(--text-muted);
+        }
+        .person-badge .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #636e72; transition: background var(--transition);
+        }
+        .person-badge .dot.active { background: var(--info-cyan); box-shadow: 0 0 8px var(--info-cyan); }
+
+        /* ================================================================
+           STATISTICS CARD
+           ================================================================ */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 10px 6px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 10px;
+        }
+        .stat-value {
+            font-size: 1.6rem; font-weight: 700;
+            color: var(--info-cyan);
+        }
+        .stat-label {
+            font-size: 0.7rem; color: var(--text-muted);
+            margin-top: 2px; text-transform: uppercase; letter-spacing: .5px;
+        }
+        .stat-item.fever-rate .stat-value { color: var(--highlight); }
+        .stat-item.uptime .stat-value { font-size: 1rem; color: var(--success); }
+
+        /* ================================================================
+           DISTANCE SENSOR CARD
+           ================================================================ */
+        .radar-wrapper {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 10px;
+        }
+        .radar-container {
+            position: relative;
+            width: 130px; height: 130px;
+        }
+        .radar-ring {
+            position: absolute; border-radius: 50%;
+            border: 1px solid rgba(0,206,201,0.15);
+        }
+        .radar-ring:nth-child(1) { inset: 0; }
+        .radar-ring:nth-child(2) { inset: 20%; }
+        .radar-ring:nth-child(3) { inset: 40%; }
+        .radar-center {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column;
+        }
+        .distance-value {
+            font-size: 1.8rem; font-weight: 700; color: var(--info-cyan);
+        }
+        .distance-unit { font-size: 0.7rem; color: var(--text-muted); }
+
+        @keyframes radar-sweep {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .radar-sweep-line {
+            position: absolute; top: 50%; left: 50%;
+            width: 50%; height: 2px;
+            background: linear-gradient(90deg, rgba(0,206,201,0.6), transparent);
+            transform-origin: left center;
+            animation: radar-sweep 3s linear infinite;
+        }
+        .detected-badge {
+            font-size: 0.78rem; padding: 4px 14px;
+            border-radius: 12px; font-weight: 500;
+        }
+        .detected-badge.yes { background: rgba(0,206,201,0.15); color: var(--info-cyan); }
+        .detected-badge.no  { background: rgba(255,255,255,0.05); color: var(--text-muted); }
+
+        /* ================================================================
+           SERVO CONTROL CARD
+           ================================================================ */
+        .servo-visual {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 8px; margin-bottom: 12px;
+        }
+        .servo-gauge {
+            position: relative;
+            width: 140px; height: 75px;
+            overflow: hidden;
+        }
+        .servo-gauge-bg {
+            position: absolute; bottom: 0; left: 0;
+            width: 140px; height: 140px;
+            border-radius: 50%;
+            border: 3px solid rgba(0,206,201,0.15);
+            clip-path: inset(0 0 50% 0);
+        }
+        .servo-needle {
+            position: absolute; bottom: 0; left: 50%;
+            width: 2px; height: 60px;
+            background: var(--highlight);
+            transform-origin: bottom center;
+            transition: transform 0.5s cubic-bezier(.4,0,.2,1);
+            border-radius: 2px;
+        }
+        .servo-dot {
+            position: absolute; bottom: -4px; left: 50%;
+            width: 10px; height: 10px; margin-left: -5px;
+            background: var(--highlight);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(233,69,96,0.5);
+        }
+        .servo-angle-text {
+            font-size: 1.4rem; font-weight: 600;
+            color: var(--info-cyan);
+        }
+        .servo-slider-wrap { width: 100%; margin: 8px 0; }
+        .servo-slider {
+            -webkit-appearance: none; appearance: none;
+            width: 100%; height: 6px;
+            background: linear-gradient(90deg, var(--bg-accent), var(--info-cyan));
+            border-radius: 3px; outline: none;
+            cursor: pointer;
+        }
+        .servo-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 18px; height: 18px; border-radius: 50%;
+            background: var(--info-cyan);
+            box-shadow: 0 0 8px rgba(0,206,201,0.4);
+            cursor: pointer;
+        }
+        .servo-slider::-moz-range-thumb {
+            width: 18px; height: 18px; border-radius: 50%;
+            background: var(--info-cyan); border: none; cursor: pointer;
+        }
+        .servo-labels {
+            display: flex; justify-content: space-between;
+            font-size: 0.65rem; color: var(--text-muted);
+        }
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+            padding: 7px 16px; border: none; border-radius: 8px;
+            font-family: 'Poppins', sans-serif; font-size: 0.75rem; font-weight: 500;
+            cursor: pointer; transition: all var(--transition);
+        }
+        .btn-primary { background: var(--bg-accent); color: var(--info-cyan); }
+        .btn-primary:hover { background: rgba(15,52,96,0.8); }
+        .btn-primary.active { background: var(--info-cyan); color: var(--bg-primary); }
+        .btn-danger { background: rgba(233,69,96,0.15); color: var(--highlight); }
+        .btn-danger:hover { background: rgba(233,69,96,0.25); }
+        .btn-sm { padding: 4px 10px; font-size: 0.7rem; }
+
+        .auto-scan-row {
+            display: flex; justify-content: center; gap: 8px; margin-top: 8px;
+        }
+
+        /* ================================================================
+           TEMPERATURE CHART CARD
+           ================================================================ */
+        .chart-container {
+            position: relative; width: 100%; height: 220px;
+        }
+
+        /* ================================================================
+           SYSTEM HEALTH CARD
+           ================================================================ */
+        .health-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        .health-item {
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 10px;
+        }
+        .health-label {
+            font-size: 0.7rem; color: var(--text-muted);
+            margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px;
+        }
+        .health-bar-bg {
+            height: 7px; background: rgba(255,255,255,0.08);
+            border-radius: 4px; overflow: hidden;
+        }
+        .health-bar-fill {
+            height: 100%; border-radius: 4px;
+            transition: width var(--transition), background var(--transition);
+        }
+        .health-bar-fill.ok   { background: var(--success); }
+        .health-bar-fill.warn { background: var(--warn-yellow); }
+        .health-bar-fill.crit { background: var(--highlight); }
+        .health-value {
+            font-size: 0.78rem; font-weight: 600;
+            margin-top: 4px;
+        }
+
+        /* ================================================================
+           ALERT LOG
+           ================================================================ */
+        .alert-log {
+            max-height: 220px; overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--bg-accent) transparent;
+        }
+        .alert-log::-webkit-scrollbar { width: 5px; }
+        .alert-log::-webkit-scrollbar-track { background: transparent; }
+        .alert-log::-webkit-scrollbar-thumb { background: var(--bg-accent); border-radius: 3px; }
+
+        .alert-entry {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.78rem;
+            transition: background var(--transition);
+        }
+        .alert-entry:hover { background: rgba(255,255,255,0.02); }
+        .alert-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            margin-top: 5px; flex-shrink: 0;
+        }
+        .alert-dot.info    { background: var(--info-cyan); }
+        .alert-dot.warning { background: var(--warn-yellow); }
+        .alert-dot.error   { background: var(--highlight); }
+        .alert-dot.system  { background: var(--text-muted); }
+        .alert-time {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.68rem; color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .alert-msg { flex: 1; line-height: 1.4; word-break: break-word; }
+
+        /* ================================================================
+           SERIAL MONITOR
+           ================================================================ */
+        .serial-toolbar {
+            display: flex; align-items: center; gap: 6px;
+            margin-bottom: 10px; flex-wrap: wrap;
+        }
+        .serial-filter {
+            flex: 1; min-width: 100px;
+            padding: 5px 10px;
+            background: #0d1117;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: var(--success);
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.72rem;
+            outline: none;
+        }
+        .serial-filter::placeholder { color: rgba(0,184,148,0.3); }
+        .serial-filter:focus { border-color: var(--success); }
+        .serial-line-count {
+            font-size: 0.68rem; color: var(--text-muted);
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .serial-output {
+            background: #0d1117;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 10px 12px;
+            height: 230px;
+            overflow-y: auto;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.72rem;
+            line-height: 1.6;
+            scrollbar-width: thin;
+            scrollbar-color: #1e3a1e transparent;
+        }
+        .serial-output::-webkit-scrollbar { width: 5px; }
+        .serial-output::-webkit-scrollbar-track { background: transparent; }
+        .serial-output::-webkit-scrollbar-thumb { background: #1e3a1e; border-radius: 3px; }
+
+        .serial-line { white-space: pre-wrap; word-break: break-all; }
+        .serial-ts   { color: #636e72; }
+        .serial-lvl-INFO   { color: var(--success); }
+        .serial-lvl-WARN   { color: var(--warn-yellow); }
+        .serial-lvl-ERROR  { color: var(--highlight); }
+        .serial-lvl-DATA   { color: var(--info-cyan); }
+        .serial-lvl-SYSTEM { color: var(--text-primary); }
+        .serial-msg-INFO   { color: rgba(0,184,148,0.85); }
+        .serial-msg-WARN   { color: rgba(253,203,110,0.85); }
+        .serial-msg-ERROR  { color: rgba(233,69,96,0.85); }
+        .serial-msg-DATA   { color: rgba(0,206,201,0.85); }
+        .serial-msg-SYSTEM { color: rgba(232,232,232,0.75); }
+
+        /* ================================================================
+           TOAST NOTIFICATIONS
+           ================================================================ */
+        .toast-container {
+            position: fixed; top: 70px; right: 20px; z-index: 9999;
+            display: flex; flex-direction: column; gap: 8px;
+            pointer-events: none;
+        }
+        .toast {
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 0.8rem; font-weight: 500;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            pointer-events: auto;
+            animation: toast-in 0.35s ease-out forwards;
+            max-width: 320px;
+        }
+        .toast.fade-out { animation: toast-out 0.3s ease-in forwards; }
+        .toast.info    { background: rgba(0,206,201,0.9); color: #0d1117; }
+        .toast.success { background: rgba(0,184,148,0.9); color: #0d1117; }
+        .toast.warning { background: rgba(253,203,110,0.9); color: #0d1117; }
+        .toast.error   { background: rgba(233,69,96,0.9); color: #fff; }
+
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateX(40px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes toast-out {
+            from { opacity: 1; transform: translateX(0); }
+            to   { opacity: 0; transform: translateX(40px); }
+        }
+
+        /* ================================================================
+           RESPONSIVE
+           ================================================================ */
+        @media (max-width: 1200px) {
+            .dashboard { grid-template-columns: repeat(2, 1fr); }
+            .card--chart, .card--system, .card--alerts, .card--serial { grid-column: span 2; }
+        }
+        @media (max-width: 640px) {
+            html { font-size: 13px; }
+            header { padding: 10px 14px; }
+            .dashboard { grid-template-columns: 1fr; padding: 12px 10px 30px; gap: 12px; }
+            .card--chart, .card--system, .card--alerts, .card--serial { grid-column: span 1; }
+            .temp-value { font-size: 2.8rem; }
+            .serial-output { height: 200px; }
+        }
+
+        /* ================================================================
+           POWER BUTTONS FOOTER
+           ================================================================ */
+        .power-footer {
+            display: flex; justify-content: center; gap: 12px;
+            padding: 0 24px 32px;
+            max-width: 1600px; margin: 0 auto;
+        }
+        .btn-power {
+            padding: 8px 22px; border-radius: 8px;
+            border: 1px solid rgba(233,69,96,0.3);
+            background: rgba(233,69,96,0.08);
+            color: var(--highlight);
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.78rem; font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+        .btn-power:hover {
+            background: rgba(233,69,96,0.18);
+            border-color: var(--highlight);
+        }
+    </style>
+</head>
+<body>
+
+<!-- ====================================================================
+     HEADER
+     ==================================================================== -->
+<header>
+    <div class="header-left">
+        <span class="header-logo">🤖🌡️</span>
+        <div>
+            <div class="header-title">TempBot Dashboard</div>
+            <div class="header-subtitle">Raspberry Pi Temperature Checker</div>
+        </div>
+    </div>
+    <div class="header-right">
+        <div class="conn-indicator">
+            <span class="conn-dot" id="connDot"></span>
+            <span id="connLabel">Disconnected</span>
+        </div>
+        <span id="clock">--:--:--</span>
+    </div>
+</header>
+
+<!-- ====================================================================
+     TOAST CONTAINER
+     ==================================================================== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ====================================================================
+     DASHBOARD GRID
+     ==================================================================== -->
+<div class="dashboard">
+
+    <!-- 1. LIVE TEMPERATURE -->
+    <div class="card card--temp">
+        <div class="card-header"><span>🌡️ Live Temperature</span><span class="icon" id="tempIcon">—</span></div>
+        <div class="temp-display">
+            <div class="temp-value" id="tempValue">--.-<span class="temp-unit">°C</span></div>
+            <div class="temp-label" id="tempTime">Waiting for reading…</div>
+            <div class="temp-status normal" id="tempStatus"><span>●</span> Normal</div>
+            <div class="person-badge">
+                <span class="dot" id="personDot"></span>
+                <span id="personLabel">No person detected</span>
+            </div>
+            <div style="margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted);">
+                <span>Threshold:</span>
+                <input type="number" id="feverInput" min="30.0" max="45.0" step="0.1" value="37.5" style="width: 58px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 3px 6px; text-align: center; font-size: 0.8rem;">
+                <span>°C</span>
+                <button class="btn btn-primary btn-sm" onclick="setThreshold()" style="padding: 3px 8px; font-size: 0.75rem;">Set</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. STATISTICS -->
+    <div class="card card--stats">
+        <div class="card-header"><span>📊 Statistics</span></div>
+        <div class="stat-grid">
+            <div class="stat-item">
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="statNormal">0</div>
+                <div class="stat-label">Normal</div>
+            </div>
+            <div class="stat-item fever-rate">
+                <div class="stat-value" id="statFever">0</div>
+                <div class="stat-label">Fevers</div>
+            </div>
+            <div class="stat-item fever-rate">
+                <div class="stat-value" id="statRate">0%</div>
+                <div class="stat-label">Fever Rate</div>
+            </div>
+            <div class="stat-item uptime" style="grid-column: span 2;">
+                <div class="stat-value" id="statUptime">—</div>
+                <div class="stat-label">Uptime</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. DISTANCE SENSOR -->
+    <div class="card card--distance">
+        <div class="card-header"><span>📡 Distance Sensor</span></div>
+        <div class="radar-wrapper">
+            <div class="radar-container">
+                <div class="radar-ring"></div>
+                <div class="radar-ring"></div>
+                <div class="radar-ring"></div>
+                <div class="radar-sweep-line" id="radarSweep"></div>
+                <div class="radar-center">
+                    <div class="distance-value" id="distValue">--</div>
+                    <div class="distance-unit">cm</div>
+                </div>
+            </div>
+            <div class="detected-badge no" id="detectedBadge">No Person</div>
+        </div>
+    </div>
+
+    <!-- 4. SERVO CONTROL -->
+    <div class="card card--servo">
+        <div class="card-header"><span>⚙️ Servo Control</span></div>
+        <div class="servo-visual">
+            <div class="servo-gauge">
+                <div class="servo-gauge-bg"></div>
+                <div class="servo-needle" id="servoNeedle"></div>
+                <div class="servo-dot"></div>
+            </div>
+            <div class="servo-angle-text"><span id="servoAngleText">90</span>°</div>
+        </div>
+        <div class="servo-slider-wrap">
+            <input type="range" class="servo-slider" id="servoSlider" min="0" max="180" value="90">
+            <div class="servo-labels"><span>0°</span><span>90°</span><span>180°</span></div>
+        </div>
+        <div class="auto-scan-row">
+            <button class="btn btn-primary" id="btnAutoScan" onclick="toggleAutoScan()">Auto-Scan: ON</button>
+            <button class="btn btn-primary btn-sm" onclick="sendServo(0)">0°</button>
+            <button class="btn btn-primary btn-sm" onclick="sendServo(90)">90°</button>
+            <button class="btn btn-primary btn-sm" onclick="sendServo(180)">180°</button>
+        </div>
+    </div>
+
+    <!-- 5. TEMPERATURE HISTORY CHART -->
+    <div class="card card--chart">
+        <div class="card-header"><span>📈 Temperature History</span><span class="serial-line-count" id="chartCount">0 readings</span></div>
+        <div class="chart-container">
+            <canvas id="tempChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 6. SYSTEM HEALTH -->
+    <div class="card card--system">
+        <div class="card-header"><span>💻 System Health</span></div>
+        <div class="health-grid">
+            <div class="health-item">
+                <div class="health-label">CPU Usage</div>
+                <div class="health-bar-bg"><div class="health-bar-fill ok" id="cpuBar" style="width:0%"></div></div>
+                <div class="health-value" id="cpuText">0%</div>
+            </div>
+            <div class="health-item">
+                <div class="health-label">RAM Usage</div>
+                <div class="health-bar-bg"><div class="health-bar-fill ok" id="ramBar" style="width:0%"></div></div>
+                <div class="health-value" id="ramText">0%</div>
+            </div>
+            <div class="health-item">
+                <div class="health-label">CPU Temperature</div>
+                <div class="health-bar-bg"><div class="health-bar-fill ok" id="cpuTempBar" style="width:0%"></div></div>
+                <div class="health-value" id="cpuTempText">0 °C</div>
+            </div>
+            <div class="health-item">
+                <div class="health-label">Disk Usage</div>
+                <div class="health-bar-bg"><div class="health-bar-fill ok" id="diskBar" style="width:0%"></div></div>
+                <div class="health-value" id="diskText">0%</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. ALERT LOG -->
+    <div class="card card--alerts">
+        <div class="card-header"><span>🔔 Alert Log</span></div>
+        <div class="alert-log" id="alertLog">
+            <div class="alert-entry">
+                <div class="alert-dot system"></div>
+                <span class="alert-time">--:--:--</span>
+                <span class="alert-msg">Waiting for events…</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. SERIAL MONITOR -->
+    <div class="card card--serial">
+        <div class="card-header"><span>🖥️ Serial Monitor</span><span class="serial-line-count" id="serialCount">0 lines</span></div>
+        <div class="serial-toolbar">
+            <input type="text" class="serial-filter" id="serialFilter" placeholder="Filter…">
+            <button class="btn btn-primary btn-sm" id="btnScrollLock" onclick="toggleScrollLock()">🔒 Auto</button>
+            <button class="btn btn-primary btn-sm" onclick="toggleSerialPause()">⏸ Pause</button>
+            <button class="btn btn-primary btn-sm" onclick="clearSerial()">🗑 Clear</button>
+            <button class="btn btn-primary btn-sm" onclick="exportSerial()">💾 Export</button>
+        </div>
+        <div class="serial-output" id="serialOutput"></div>
+    </div>
+
+</div>
+
+<!-- ====================================================================
+     POWER FOOTER
+     ==================================================================== -->
+<div class="power-footer">
+    <button class="btn-power" onclick="confirmReboot()">🔄 Reboot</button>
+    <button class="btn-power" onclick="confirmShutdown()">⏻ Shutdown</button>
+</div>
+
+<!-- ====================================================================
+     JAVASCRIPT
+     ==================================================================== -->
+<script>
+(function() {
+    'use strict';
+
+    // ----- STATE -----
+    let connected = false;
+    let autoScroll = true;
+    let serialPaused = false;
+    let autoScanOn = true;
+    let serialLines = [];
+    const MAX_SERIAL = 500;
+    let lastFeverState = false;
+
+    // ----- ELEMENTS -----
+    const $ = id => document.getElementById(id);
+    const connDot    = $('connDot');
+    const connLabel  = $('connLabel');
+    const clockEl    = $('clock');
+
+    // ----- CLOCK -----
+    function updateClock() {
+        const now = new Date();
+        clockEl.textContent = now.toLocaleTimeString('en-GB');
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ----- SOCKET.IO -----
+    const socket = io({ transports: ['websocket', 'polling'], reconnectionDelay: 1000 });
+
+    socket.on('connect', () => {
+        connected = true;
+        connDot.classList.add('connected');
+        connLabel.textContent = 'Connected';
+        addSerialLine({ timestamp: ts(), level: 'SYSTEM', message: 'WebSocket connected' });
+        socket.emit('request_serial');
+    });
+    socket.on('disconnect', () => {
+        connected = false;
+        connDot.classList.remove('connected');
+        connLabel.textContent = 'Disconnected';
+        addSerialLine({ timestamp: ts(), level: 'ERROR', message: 'WebSocket disconnected' });
+    });
+    socket.on('connect_error', () => {
+        connected = false;
+        connDot.classList.remove('connected');
+        connLabel.textContent = 'Error';
+    });
+
+    // ----- MAIN UPDATE -----
+    socket.on('update', (payload) => {
+        if (!payload) return;
+        updateTemperature(payload.state || {});
+        updateStats(payload.state || {}, payload.history || []);
+        updateDistance(payload.state || {});
+        updateServo(payload.state || {});
+        updateChart(payload.history || []);
+        updateSystem(payload.system || {});
+    });
+
+    // Serial data from server
+    socket.on('serial_data', (data) => {
+        if (data && data.lines) {
+            data.lines.forEach(l => addSerialLine(l));
+        }
+    });
+
+    // ----- TEMPERATURE -----
+    function updateTemperature(state) {
+        const temp = state.temperature;
+        const threshold = state.fever_threshold || 37.5;
+        const tempVal = $('tempValue');
+        const tempStatus = $('tempStatus');
+        const tempTime = $('tempTime');
+        const personDot = $('personDot');
+        const personLabel = $('personLabel');
+
+        if (temp !== null && temp !== undefined) {
+            tempVal.innerHTML = parseFloat(temp).toFixed(1) + '<span class="temp-unit">°C</span>';
+
+            // Color coding
+            tempVal.classList.remove('fever');
+            if (temp >= threshold) {
+                tempVal.style.color = 'var(--highlight)';
+                tempVal.classList.add('fever');
+                tempStatus.className = 'temp-status fever';
+                tempStatus.innerHTML = '<span>⚠</span> FEVER DETECTED';
+                $('tempIcon').textContent = '🔴';
+                if (!lastFeverState) {
+                    showToast('⚠️ Fever detected: ' + parseFloat(temp).toFixed(1) + '°C', 'error');
+                    lastFeverState = true;
+                }
+            } else if (temp >= threshold - 1) {
+                tempVal.style.color = 'var(--warn-yellow)';
+                tempStatus.className = 'temp-status warning';
+                tempStatus.innerHTML = '<span>●</span> Elevated';
+                $('tempIcon').textContent = '🟡';
+                lastFeverState = false;
+            } else {
+                tempVal.style.color = 'var(--success)';
+                tempStatus.className = 'temp-status normal';
+                tempStatus.innerHTML = '<span>●</span> Normal';
+                $('tempIcon').textContent = '🟢';
+                lastFeverState = false;
+            }
+        } else {
+            tempVal.innerHTML = '--.-<span class="temp-unit">°C</span>';
+            tempVal.style.color = 'var(--text-muted)';
+            tempVal.classList.remove('fever');
+            $('tempIcon').textContent = '—';
+            lastFeverState = false;
+        }
+
+        // Last reading time
+        if (state.last_reading_time) {
+            if (typeof state.last_reading_time === 'number') {
+                const d = new Date(state.last_reading_time * 1000);
+                tempTime.textContent = 'Last: ' + (isNaN(d) ? state.last_reading_time : d.toLocaleTimeString('en-GB'));
+            } else {
+                tempTime.textContent = 'Last: ' + state.last_reading_time;
+            }
+        }
+
+        // Keep threshold input in sync if not being edited
+        if (state.fever_threshold && document.activeElement !== $('feverInput')) {
+            $('feverInput').value = parseFloat(state.fever_threshold).toFixed(1);
+        }
+
+        // Person detection
+        if (state.person_detected) {
+            personDot.classList.add('active');
+            personLabel.textContent = 'Person detected';
+        } else {
+            personDot.classList.remove('active');
+            personLabel.textContent = 'No person detected';
+        }
+    }
+
+    // ----- STATISTICS -----
+    function updateStats(state, history) {
+        const total = history.length;
+        const threshold = state.fever_threshold || 37.5;
+        let normal = 0, fever = 0;
+        history.forEach(r => {
+            const t = r.temperature || r.temp || 0;
+            if (t >= threshold) fever++; else normal++;
+        });
+        $('statTotal').textContent = total;
+        $('statNormal').textContent = normal;
+        $('statFever').textContent = fever;
+        $('statRate').textContent = total > 0 ? (fever / total * 100).toFixed(1) + '%' : '0%';
+    }
+
+    // ----- DISTANCE -----
+    function updateDistance(state) {
+        const dist = (state.distance_cm !== undefined && state.distance_cm !== null) ? state.distance_cm : state.distance;
+        const distVal = $('distValue');
+        const badge = $('detectedBadge');
+
+        if (dist !== null && dist !== undefined && dist > 0) {
+            distVal.textContent = parseFloat(dist).toFixed(1);
+        } else {
+            distVal.textContent = '--';
+        }
+            distVal.textContent = parseFloat(dist).toFixed(1);
+        } else {
+            distVal.textContent = '--';
+        }
+
+        if (state.person_detected) {
+            badge.className = 'detected-badge yes';
+            badge.textContent = '👤 Person Detected';
+        } else {
+            badge.className = 'detected-badge no';
+            badge.textContent = 'No Person';
+        }
+    }
+
+    // ----- SERVO -----
+    let _sliderDragging = false;
+    const servoSlider = $('servoSlider');
+
+    servoSlider.addEventListener('mousedown', () => _sliderDragging = true);
+    servoSlider.addEventListener('touchstart', () => _sliderDragging = true);
+    servoSlider.addEventListener('mouseup', () => { _sliderDragging = false; sendServoFromSlider(); });
+    servoSlider.addEventListener('touchend', () => { _sliderDragging = false; sendServoFromSlider(); });
+    servoSlider.addEventListener('input', () => {
+        updateServoVisual(parseInt(servoSlider.value));
+    });
+
+    function sendServoFromSlider() {
+        sendServo(parseInt(servoSlider.value));
+    }
+
+    function updateServoVisual(angle) {
+        $('servoAngleText').textContent = angle;
+        // Map 0-180 to 90 to -90 deg CSS rotation
+        const rot = 90 - angle;
+        $('servoNeedle').style.transform = 'rotate(' + rot + 'deg)';
+    }
+
+    function updateServo(state) {
+        const angle = state.servo_angle;
+        if (angle !== null && angle !== undefined && !_sliderDragging) {
+            servoSlider.value = angle;
+            updateServoVisual(angle);
+        }
+        if (state.auto_scan !== undefined) {
+            autoScanOn = state.auto_scan;
+            const btn = $('btnAutoScan');
+            btn.textContent = 'Auto-Scan: ' + (autoScanOn ? 'ON' : 'OFF');
+            if (autoScanOn) btn.classList.add('active'); else btn.classList.remove('active');
+        }
+    }
+
+    window.sendServo = function(angle) {
+        fetch('/api/servo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ angle: angle })
+        })
+        .then(r => r.json())
+        .then(d => { if (d.ok) { updateServoVisual(angle); servoSlider.value = angle; } })
+        .catch(() => showToast('Servo command failed', 'error'));
+    };
+
+    window.toggleAutoScan = function() {
+        autoScanOn = !autoScanOn;
+        const btn = $('btnAutoScan');
+        btn.textContent = 'Auto-Scan: ' + (autoScanOn ? 'ON' : 'OFF');
+        if (autoScanOn) btn.classList.add('active'); else btn.classList.remove('active');
+        fetch('/api/autoscan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_scan: autoScanOn })
+        }).catch(err => console.error('AutoScan error:', err));
+        showToast('Auto-Scan ' + (autoScanOn ? 'enabled' : 'disabled'), 'info');
+    };
+
+    window.setThreshold = function() {
+        const input = $('feverInput');
+        const val = parseFloat(input.value);
+        if (isNaN(val) || val < 30.0 || val > 45.0) {
+            showToast('Threshold must be between 30.0°C and 45.0°C', 'error');
+            return;
+        }
+        fetch('/api/threshold', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ threshold: val })
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) {
+                showToast('Fever threshold updated to ' + val.toFixed(1) + '°C', 'success');
+            } else {
+                showToast(d.error || 'Failed to update threshold', 'error');
+            }
+        })
+        .catch(() => showToast('Threshold update failed', 'error'));
+    };
+
+    // ----- CHART -----
+    const ctx = $('tempChart').getContext('2d');
+    const tempChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: '#00cec9',
+                    backgroundColor: 'rgba(0,206,201,0.1)',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    fill: true,
+                    tension: 0.3,
+                },
+                {
+                    label: 'Threshold',
+                    data: [],
+                    borderColor: 'rgba(233,69,96,0.5)',
+                    borderWidth: 1,
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    fill: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 300 },
+            plugins: {
+                legend: {
+                    labels: { color: '#a0a0b8', font: { size: 11, family: 'Poppins' } }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#636e72', font: { size: 10 }, maxTicksLimit: 10 },
+                    grid: { color: 'rgba(255,255,255,0.04)' }
+                },
+                y: {
+                    min: 30, max: 42,
+                    ticks: { color: '#636e72', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.04)' }
+                }
+            }
+        }
+    });
+
+    function updateChart(history) {
+        const last50 = history.slice(-50);
+        const labels = last50.map((r, i) => {
+            if (r.time) {
+                const d = typeof r.time === 'number' ? new Date(r.time * 1000) : new Date(r.time);
+                return isNaN(d) ? '' + (i + 1) : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+            if (r.timestamp) {
+                const d = typeof r.timestamp === 'number' ? new Date(r.timestamp * 1000) : new Date(r.timestamp);
+                return isNaN(d) ? '' + (i + 1) : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+            return '' + (i + 1);
+        });
+        const temps = last50.map(r => r.temperature || r.temp || null);
+        const currentThreshold = parseFloat($('feverInput') ? $('feverInput').value : 37.5) || 37.5;
+        const threshold = last50.map(() => currentThreshold);
+
+        tempChart.data.labels = labels;
+        tempChart.data.datasets[0].data = temps;
+        tempChart.data.datasets[1].data = threshold;
+        tempChart.update('none');
+
+        $('chartCount').textContent = history.length + ' readings';
+    }
+
+    // ----- SYSTEM HEALTH -----
+    function updateSystem(sys) {
+        updateBar('cpuBar', 'cpuText', sys.cpu_percent || 0, '%');
+        updateBar('ramBar', 'ramText', sys.ram_percent || 0, '%',
+            sys.ram_used_mb ? ' (' + sys.ram_used_mb + '/' + sys.ram_total_mb + ' MB)' : '');
+        updateBar('cpuTempBar', 'cpuTempText', Math.min((sys.cpu_temp || 0) / 85 * 100, 100), '',
+            (sys.cpu_temp || 0).toFixed(1) + ' °C');
+        updateBar('diskBar', 'diskText', sys.disk_percent || 0, '%',
+            sys.disk_used_gb ? ' (' + sys.disk_used_gb + '/' + sys.disk_total_gb + ' GB)' : '');
+
+        if (sys.uptime_human) {
+            $('statUptime').textContent = sys.uptime_human;
+        }
+    }
+
+    function updateBar(barId, textId, pct, suffix, extraText) {
+        const bar = $(barId);
+        bar.style.width = Math.min(pct, 100) + '%';
+        bar.className = 'health-bar-fill ' + (pct > 85 ? 'crit' : pct > 60 ? 'warn' : 'ok');
+        $(textId).textContent = (extraText !== undefined ? extraText : pct.toFixed(1) + (suffix || ''));
+    }
+
+    // ----- ALERT LOG -----
+    socket.on('update', (payload) => {
+        // Parse events from state for alert log
+        const state = payload.state || {};
+        if (state.last_event) {
+            addAlert(state.last_event_level || 'info', state.last_event);
+        }
+    });
+
+    const alertLog = $('alertLog');
+    let alertsInitialized = false;
+
+    function addAlert(level, message) {
+        if (!alertsInitialized) {
+            alertLog.innerHTML = '';
+            alertsInitialized = true;
+        }
+        const lmap = { info: 'info', warning: 'warning', warn: 'warning', error: 'error', system: 'system' };
+        const entry = document.createElement('div');
+        entry.className = 'alert-entry';
+        entry.innerHTML =
+            '<div class="alert-dot ' + (lmap[level] || 'info') + '"></div>' +
+            '<span class="alert-time">' + ts() + '</span>' +
+            '<span class="alert-msg">' + escHtml(message) + '</span>';
+        alertLog.prepend(entry);
+        // Keep max 100 entries
+        while (alertLog.children.length > 100) alertLog.removeChild(alertLog.lastChild);
+    }
+
+    // Also populate alerts from serial
+    // (already handled via serial lines)
+
+    // ----- SERIAL MONITOR -----
+    const serialOutput = $('serialOutput');
+    const serialFilter = $('serialFilter');
+    let filterText = '';
+
+    serialFilter.addEventListener('input', () => {
+        filterText = serialFilter.value.toLowerCase();
+        renderSerial();
+    });
+
+    function addSerialLine(entry) {
+        if (serialPaused) return;
+        serialLines.push(entry);
+        if (serialLines.length > MAX_SERIAL) {
+            serialLines = serialLines.slice(-MAX_SERIAL);
+        }
+
+        // Also add to alert log if it's a significant event
+        const lvl = (entry.level || 'INFO').toUpperCase();
+        if (lvl === 'ERROR' || lvl === 'WARN') {
+            addAlert(lvl.toLowerCase(), entry.message);
+        }
+
+        appendSerialDOM(entry);
+        $('serialCount').textContent = serialLines.length + ' lines';
+    }
+
+    function appendSerialDOM(entry) {
+        const lvl = (entry.level || 'INFO').toUpperCase();
+        const msg = entry.message || '';
+        if (filterText && !msg.toLowerCase().includes(filterText) && !lvl.toLowerCase().includes(filterText)) {
+            return;
+        }
+        const div = document.createElement('div');
+        div.className = 'serial-line';
+        div.innerHTML =
+            '<span class="serial-ts">[' + escHtml(entry.timestamp || '--:--:--.---') + ']</span> ' +
+            '<span class="serial-lvl-' + lvl + '">' + lvl.padEnd(6) + '</span> ' +
+            '<span class="serial-msg-' + lvl + '">' + escHtml(msg) + '</span>';
+        serialOutput.appendChild(div);
+
+        // Trim DOM
+        while (serialOutput.children.length > MAX_SERIAL) {
+            serialOutput.removeChild(serialOutput.firstChild);
+        }
+
+        if (autoScroll) {
+            serialOutput.scrollTop = serialOutput.scrollHeight;
+        }
+    }
+
+    function renderSerial() {
+        serialOutput.innerHTML = '';
+        serialLines.forEach(entry => appendSerialDOM(entry));
+    }
+
+    window.toggleScrollLock = function() {
+        autoScroll = !autoScroll;
+        const btn = $('btnScrollLock');
+        btn.textContent = autoScroll ? '🔒 Auto' : '🔓 Manual';
+        if (autoScroll) serialOutput.scrollTop = serialOutput.scrollHeight;
+    };
+
+    window.toggleSerialPause = function() {
+        serialPaused = !serialPaused;
+        showToast(serialPaused ? 'Serial paused' : 'Serial resumed', 'info');
+    };
+
+    window.clearSerial = function() {
+        serialLines = [];
+        serialOutput.innerHTML = '';
+        $('serialCount').textContent = '0 lines';
+        showToast('Serial monitor cleared', 'info');
+    };
+
+    window.exportSerial = function() {
+        const text = serialLines.map(l =>
+            '[' + (l.timestamp || '') + '] ' + (l.level || 'INFO').padEnd(6) + ' ' + (l.message || '')
+        ).join('\n');
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'tempbot_serial_' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Serial log exported', 'success');
+    };
+
+    // ----- TOAST -----
+    window.showToast = function(message, type) {
+        type = type || 'info';
+        const container = $('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('fade-out');
+            setTimeout(() => toast.remove(), 300);
+        }, 3500);
+    };
+
+    // ----- POWER -----
+    window.confirmReboot = function() {
+        if (confirm('Are you sure you want to reboot TempBot?')) {
+            fetch('/api/reboot', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => showToast(d.message || 'Rebooting…', 'warning'))
+                .catch(() => showToast('Reboot request failed', 'error'));
+        }
+    };
+
+    window.confirmShutdown = function() {
+        if (confirm('Are you sure you want to shut down TempBot? You will need physical access to restart.')) {
+            fetch('/api/shutdown', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => showToast(d.message || 'Shutting down…', 'warning'))
+                .catch(() => showToast('Shutdown request failed', 'error'));
+        }
+    };
+
+    // ----- HELPERS -----
+    function ts() {
+        const n = new Date();
+        return n.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+               '.' + String(n.getMilliseconds()).padStart(3, '0');
+    }
+
+    function escHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    // ----- INITIAL FETCH -----
+    // Load history on first connect
+    setTimeout(() => {
+        fetch('/api/history').then(r => r.json()).then(d => {
+            if (d.ok) updateChart(d.data);
+        }).catch(() => {});
+        fetch('/api/logs').then(r => r.json()).then(d => {
+            if (d.ok && d.data) {
+                d.data.forEach(line => {
+                    addAlert('info', line);
+                });
+            }
+        }).catch(() => {});
+    }, 500);
+
+    // ----- INITIAL SERIAL SEED -----
+    addSerialLine({ timestamp: ts(), level: 'SYSTEM', message: 'TempBot Dashboard loaded' });
+    addSerialLine({ timestamp: ts(), level: 'INFO', message: 'Connecting to WebSocket server…' });
+
+})();
+</script>
+</body>
+</html>

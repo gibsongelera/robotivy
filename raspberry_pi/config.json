@@ -1,0 +1,73 @@
+{
+    "pins": {
+        "trig": 23,
+        "echo": 24,
+        "servo": 18,
+        "green_led": 17,
+        "red_led": 27,
+        "buzzer": 22
+    },
+    "i2c": {
+        "lcd_address": "0x27",
+        "mlx_address": "0x5A",
+        "bus_number": 1
+    },
+    "thresholds": {
+        "fever_temp": 37.5,
+        "detection_distance": 50,
+        "min_valid_temp": 30.0,
+        "max_valid_temp": 45.0,
+        "min_valid_distance": 2,
+        "max_valid_distance": 400
+    },
+    "safety": {
+        "use_tmpfs": true,
+        "tmpfs_path": "/tmp/tempbot",
+        "persistent_path": "/home/pi/tempbot_data",
+        "sync_interval": 300,
+        "max_log_size_mb": 10,
+        "max_log_files": 5,
+        "watchdog_interval": 30,
+        "max_events_in_memory": 1000
+    },
+    "web": {
+        "host": "0.0.0.0",
+        "port": 5000,
+        "debug": false,
+        "secret_key": "tempbot-secret-change-me"
+    },
+    "hotspot": {
+        "ssid": "TempBot-Monitor",
+        "password": "tempbot123",
+        "channel": 6,
+        "ip_address": "192.168.4.1",
+        "dhcp_range_start": "192.168.4.2",
+        "dhcp_range_end": "192.168.4.20",
+        "subnet_mask": "255.255.255.0"
+    },
+    "servo": {
+        "min_angle": 0,
+        "max_angle": 180,
+        "center_angle": 90,
+        "scan_speed": 2,
+        "scan_step_delay": 0.05,
+        "pwm_frequency": 50,
+        "min_duty": 2.5,
+        "max_duty": 12.5
+    },
+    "timing": {
+        "measurement_interval": 0.5,
+        "lcd_update_interval": 0.3,
+        "idle_scan_delay": 0.05,
+        "buzzer_beep_duration": 0.2,
+        "buzzer_beep_pause": 0.3,
+        "buzzer_beep_count": 3,
+        "person_hold_time": 5.0,
+        "ultrasonic_timeout": 0.04
+    },
+    "lcd": {
+        "columns": 16,
+        "rows": 2,
+        "backlight_enabled": true
+    }
+}

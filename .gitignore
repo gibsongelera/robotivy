@@ -1,0 +1,18 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# TempBot runtime data & tmpfs folders
+data/
+tmp_tempbot/
+*.tmp
+*.log
+*.jsonl
+
+# System & IDE files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

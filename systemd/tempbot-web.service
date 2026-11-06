@@ -1,0 +1,31 @@
+[Unit]
+Description=TempBot Web Dashboard & Serial Monitor
+Documentation=https://github.com/your-username/robotivy
+After=network.target tempbot.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robotivy/raspberry_pi
+ExecStart=/usr/bin/python3 /home/pi/robotivy/raspberry_pi/web_dashboard.py
+Restart=always
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=10s
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Security & Sandboxing to Protect the Root Filesystem
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/tmp/tempbot
+PrivateTmp=false
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
