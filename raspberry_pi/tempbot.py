@@ -553,18 +553,26 @@ class TemperatureSensor:
     """
 
     def __init__(self, bus_number: int = 1):
+        self._bus_number = bus_number
         self._sensor = None
         self._lock = threading.Lock()
+        self._last_reconnect_attempt = 0.0
 
-        if adafruit_mlx90614 and board and busio:
-            try:
-                i2c = busio.I2C(board.SCL, board.SDA)
-                self._sensor = adafruit_mlx90614.MLX90614(i2c)
-                logging.info("MLX90614 sensor initialized on I2C bus %d.", bus_number)
-            except Exception as exc:
-                logging.error("MLX90614 initialization failed: %s", exc)
-        else:
-            logging.warning("MLX90614 libraries not available – running in simulation mode.")
+        self._try_init()
+
+    def _try_init(self) -> bool:
+        """Attempt to initialize the MLX90614 sensor via I2C."""
+        if not (adafruit_mlx90614 and board and busio):
+            return False
+        try:
+            i2c = busio.I2C(board.SCL, board.SDA)
+            self._sensor = adafruit_mlx90614.MLX90614(i2c)
+            logging.info("MLX90614 sensor initialized on I2C bus %d.", self._bus_number)
+            return True
+        except Exception as exc:
+            self._sensor = None
+            logging.debug("MLX90614 initialization attempt failed: %s", exc)
+            return False
 
     def read_object_temp(self) -> float:
         """Read the object (body) temperature in °C.
@@ -574,7 +582,14 @@ class TemperatureSensor:
         """
         with self._lock:
             if self._sensor is None:
-                return 36.5 + (time.time() % 3) * 0.3  # Simulated
+                # Retry init every 5 seconds in case wiring was adjusted
+                now = time.time()
+                if now - self._last_reconnect_attempt > 5.0:
+                    self._last_reconnect_attempt = now
+                    if self._try_init():
+                        logging.info("MLX90614 sensor dynamically connected!")
+                if self._sensor is None:
+                    return 36.5 + (time.time() % 3) * 0.3  # Simulated fallback
 
             try:
                 temp = self._sensor.object_temperature
@@ -619,18 +634,29 @@ class LCDDisplay:
         self._lock = threading.Lock()
 
         if CharLCD:
-            try:
-                self._lcd = CharLCD(
-                    i2c_expander="PCF8574",
-                    address=address,
-                    port=bus_number,
-                    cols=cols,
-                    rows=rows,
-                    backlight_enabled=backlight,
-                )
-                logging.info("LCD initialized at address 0x%02X.", address)
-            except Exception as exc:
-                logging.error("LCD initialization failed: %s", exc)
+            addresses_to_try = [address]
+            alt = 0x3F if address == 0x27 else 0x27
+            if alt not in addresses_to_try:
+                addresses_to_try.append(alt)
+
+            for addr in addresses_to_try:
+                try:
+                    self._lcd = CharLCD(
+                        i2c_expander="PCF8574",
+                        address=addr,
+                        port=bus_number,
+                        cols=cols,
+                        rows=rows,
+                        backlight_enabled=backlight,
+                    )
+                    logging.info("LCD initialized at address 0x%02X.", addr)
+                    break
+                except Exception as exc:
+                    logging.debug("LCD init failed at 0x%02X: %s", addr, exc)
+
+            if self._lcd is None:
+                logging.error("LCD initialization failed: Could not communicate at addresses %s",
+                              [hex(a) for a in addresses_to_try])
         else:
             logging.warning("RPLCD library not available – LCD in simulation mode.")
 

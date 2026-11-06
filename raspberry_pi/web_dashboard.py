@@ -287,7 +287,7 @@ def index():
 
 @app.route("/api/status", methods=["GET"])
 def api_status():
-    """Return current robot state from the shared state file."""
+    """Return current robot state, system health, and history from tmpfs."""
     try:
         state = _read_json(STATE_FILE, default={
             "temperature": None,
@@ -301,7 +301,18 @@ def api_status():
             "last_reading_time": None,
             "error": None,
         })
-        return jsonify({"ok": True, "data": state})
+        history = _read_json(HISTORY_FILE, default=[])
+        if isinstance(history, dict):
+            history = history.get("readings", [])
+        system = _get_system_health()
+        return jsonify({
+            "ok": True,
+            "data": state,
+            "state": state,
+            "system": system,
+            "history": history[-50:] if isinstance(history, list) else [],
+            "timestamp": time.time(),
+        })
     except Exception as exc:
         logger.exception("Error in /api/status")
         return jsonify({"ok": False, "error": str(exc)}), 500
